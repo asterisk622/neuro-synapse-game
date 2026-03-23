@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>神经突触 — 认知挑战</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+/* === RESET & BASE === */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+--bg:#0a0a12;--surface:#12121f;--surface2:#1a1a2e;
+--accent:#00f0ff;--accent2:#7b2ff7;--accent3:#ff2d75;
+--success:#00ff88;--error:#ff3355;--warn:#ffaa00;
+--text:#e0e0f0;--text2:#8888aa;
+--font-display:'Orbitron',sans-serif;
+--font-body:'Noto Sans SC',sans-serif;
+--glow:0 0 20px rgba(0,240,255,.3),0 0 60px rgba(0,240,255,.1);
+--glow2:0 0 20px rgba(123,47,247,.3),0 0 60px rgba(123,47,247,.1);
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font-body)}
+canvas#bgCanvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none}
+
+/* === SCREENS === */
+.screen{position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;display:none;flex-direction:column;align-items:center;overflow-y:auto;opacity:0;transition:opacity .5s ease}
+.screen.active{display:flex;opacity:1}
+
+/* === HUB === */
+#hub{padding:0 20px 40px}
+.hub-title{font-family:var(--font-display);font-size:clamp(1.8rem,5vw,3.2rem);font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;margin-bottom:8px}
+.hub-subtitle{color:var(--text2);font-size:.95rem;letter-spacing:6px;text-transform:uppercase;margin-bottom:40px;text-align:center}
+.categories{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;width:100%;max-width:1200px;padding:0 20px;box-sizing:border-box}
+.cat-card{background:linear-gradient(135deg,var(--surface),var(--surface2));border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:28px 24px;cursor:pointer;transition:all .3s ease;position:relative;overflow:hidden}
+.cat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent2));opacity:.6;transition:opacity .3s}
+.cat-card:hover{transform:translateY(-4px);border-color:rgba(0,240,255,.2);box-shadow:var(--glow)}
+.cat-card:hover::before{opacity:1}
+.cat-icon{font-size:2.4rem;margin-bottom:12px}
+.cat-name{font-family:var(--font-display);font-size:1.1rem;font-weight:700;margin-bottom:6px;color:var(--accent)}
+.cat-desc{color:var(--text2);font-size:.85rem;line-height:1.5;margin-bottom:16px}
+.cat-progress{display:flex;gap:8px}
+.cat-progress .dot{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--text2);transition:all .3s}
+.cat-progress .dot.unlocked{border-color:var(--accent);color:var(--accent)}
+.cat-progress .dot.completed{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.cat-progress .dot.locked{opacity:.3}
+
+/* === LEVEL SELECT === */
+#levelSelect{padding:20px;justify-content:center}
+.ls-back{position:absolute;top:24px;left:24px;background:none;border:1px solid rgba(255,255,255,.15);color:var(--text);padding:8px 20px;border-radius:8px;cursor:pointer;font-family:var(--font-body);font-size:.9rem;transition:all .3s;z-index:10}
+.ls-back:hover{border-color:var(--accent);color:var(--accent)}
+.ls-title{font-family:var(--font-display);font-size:1.6rem;font-weight:700;color:var(--accent);margin-bottom:8px}
+.ls-desc{color:var(--text2);font-size:.9rem;margin-bottom:36px}
+.levels-grid{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.level-btn{width:100px;height:120px;background:var(--surface);border:2px solid rgba(255,255,255,.08);border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:all .3s;position:relative}
+.level-btn.unlocked{border-color:rgba(0,240,255,.3)}
+.level-btn.unlocked:hover{transform:scale(1.08);box-shadow:var(--glow);border-color:var(--accent)}
+.level-btn.completed{border-color:var(--success);background:rgba(0,255,136,.05)}
+.level-btn.locked{opacity:.35;cursor:not-allowed}
+.level-num{font-family:var(--font-display);font-size:1.4rem;font-weight:700;color:var(--text)}
+.level-stars{display:flex;gap:2px;font-size:.9rem}
+.level-stars .star{color:rgba(255,255,255,.15)}
+.level-stars .star.earned{color:var(--warn)}
+
+/* === GAME AREA === */
+#gameScreen{padding:20px;justify-content:center}
+.game-hud{position:absolute;top:0;left:0;right:0;padding:16px 24px;display:flex;justify-content:space-between;align-items:center;z-index:10;background:linear-gradient(180deg,rgba(10,10,18,.95),transparent)}
+.game-hud-left,.game-hud-right{display:flex;align-items:center;gap:16px}
+.hud-label{color:var(--text2);font-size:.75rem;letter-spacing:1px;text-transform:uppercase}
+.hud-value{font-family:var(--font-display);font-size:1.1rem;font-weight:700;color:var(--accent)}
+.game-quit{background:none;border:1px solid rgba(255,255,255,.15);color:var(--text2);padding:6px 14px;border-radius:6px;cursor:pointer;font-family:var(--font-body);font-size:.8rem;transition:all .3s}
+.game-quit:hover{border-color:var(--accent3);color:var(--accent3)}
+#gameArea{width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px}
+
+/* === GAME ELEMENTS === */
+.stimulus-circle{border-radius:50%;cursor:pointer;transition:transform .1s;position:absolute}
+.stimulus-circle:hover{transform:scale(1.05)}
+.stimulus-circle:active{transform:scale(.95)}
+.number-display{font-family:var(--font-display);font-size:clamp(2rem,8vw,4rem);font-weight:900;letter-spacing:12px;color:var(--accent);text-shadow:var(--glow);text-align:center}
+.memory-grid{display:grid;gap:8px;margin:20px auto}
+.memory-cell{border-radius:10px;background:var(--surface2);border:2px solid rgba(255,255,255,.08);cursor:pointer;transition:all .2s;aspect-ratio:1}
+.memory-cell.highlighted{background:var(--accent);border-color:var(--accent);box-shadow:var(--glow)}
+.memory-cell.selected{background:rgba(0,240,255,.3);border-color:var(--accent)}
+.memory-cell.correct{background:var(--success);border-color:var(--success)}
+.memory-cell.wrong{background:var(--error);border-color:var(--error)}
+.game-input{background:var(--surface2);border:2px solid rgba(0,240,255,.3);border-radius:10px;padding:14px 20px;font-family:var(--font-display);font-size:1.5rem;color:var(--accent);text-align:center;outline:none;letter-spacing:8px;width:280px;transition:border-color .3s}
+.game-input:focus{border-color:var(--accent);box-shadow:var(--glow)}
+.game-prompt{color:var(--text);font-size:1.1rem;text-align:center;line-height:1.6;max-width:600px}
+.game-instruction{color:var(--text2);font-size:.85rem;text-align:center;margin-top:8px}
+.option-btn{background:var(--surface2);border:2px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 24px;color:var(--text);font-family:var(--font-body);font-size:1rem;cursor:pointer;transition:all .2s;min-width:120px;text-align:center}
+.option-btn:hover{border-color:var(--accent);transform:translateY(-2px)}
+.option-btn.correct-choice{background:rgba(0,255,136,.15);border-color:var(--success);color:var(--success)}
+.option-btn.wrong-choice{background:rgba(255,51,85,.15);border-color:var(--error);color:var(--error)}
+.options-row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:20px}
+.timer-bar{width:300px;max-width:80vw;height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin-top:12px}
+.timer-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;transition:width .1s linear}
+.timer-fill.danger{background:linear-gradient(90deg,var(--warn),var(--error))}
+.reaction-zone{width:280px;height:280px;border-radius:50%;background:var(--surface2);border:3px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .05s,border-color .3s;user-select:none}
+.reaction-zone.waiting{background:var(--surface2)}
+.reaction-zone.ready{background:var(--success);border-color:var(--success);box-shadow:0 0 40px rgba(0,255,136,.4)}
+.reaction-zone.too-early{background:var(--error);border-color:var(--error)}
+.arrow-display{font-size:5rem;color:var(--accent);text-shadow:var(--glow);user-select:none}
+.stroop-word{font-size:clamp(2.5rem,8vw,4.5rem);font-weight:900;font-family:var(--font-display);user-select:none;text-shadow:0 0 30px currentColor}
+.shape-display{width:120px;height:120px;display:flex;align-items:center;justify-content:center}
+.shape-display svg{filter:drop-shadow(0 0 20px rgba(0,240,255,.4))}
+
+/* === RESULT SCREEN === */
+#resultScreen{padding:20px;justify-content:center}
+.result-box{background:var(--surface);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:40px;text-align:center;max-width:420px;width:90%}
+.result-status{font-family:var(--font-display);font-size:1.5rem;font-weight:700;margin-bottom:8px}
+.result-status.pass{color:var(--success)}
+.result-status.fail{color:var(--error)}
+.result-stars{font-size:2.5rem;margin:16px 0;display:flex;justify-content:center;gap:8px}
+.result-stars .star{color:rgba(255,255,255,.1);transition:all .4s}
+.result-stars .star.earned{color:var(--warn);text-shadow:0 0 20px rgba(255,170,0,.5)}
+.result-detail{color:var(--text2);font-size:.9rem;margin:8px 0;line-height:1.6}
+.result-actions{display:flex;gap:12px;margin-top:24px;justify-content:center;flex-wrap:wrap}
+.btn{padding:12px 28px;border-radius:10px;font-family:var(--font-body);font-size:.95rem;font-weight:500;cursor:pointer;transition:all .3s;border:none}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--bg)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:var(--glow)}
+.btn-secondary{background:transparent;border:1px solid rgba(255,255,255,.15);color:var(--text)}
+.btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+
+/* === COUNTDOWN === */
+.countdown{font-family:var(--font-display);font-size:5rem;font-weight:900;color:var(--accent);text-shadow:var(--glow);animation:countPulse .5s ease}
+@keyframes countPulse{0%{transform:scale(1.5);opacity:0}100%{transform:scale(1);opacity:1}}
+
+/* === FLASH FEEDBACK === */
+.flash-overlay{position:fixed;top:0;left:0;width:100%;height:100%;z-index:100;pointer-events:none;opacity:0;transition:opacity .15s}
+.flash-overlay.show{opacity:1}
+.flash-overlay.success{background:radial-gradient(circle,rgba(0,255,136,.15),transparent 70%)}
+.flash-overlay.error{background:radial-gradient(circle,rgba(255,51,85,.2),transparent 70%)}
+
+/* === SHAKE === */
+@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+.shake{animation:shake .4s ease}
+
+/* === RESPONSIVE === */
+@media(max-width:640px){
+.categories{grid-template-columns:1fr}
+.levels-grid{gap:10px}
+.level-btn{width:80px;height:100px}
+.reaction-zone{width:200px;height:200px}
+}
+/* === WELCOME === */
+.welcome-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;flex:1;min-height:100%}
+.welcome-icon{font-size:4rem;margin-bottom:16px;animation:floatY 3s ease-in-out infinite}
+@keyframes floatY{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+.btn-start{font-size:1.15rem;padding:16px 48px;border-radius:14px;letter-spacing:2px;font-weight:700;position:relative;overflow:hidden}
+.btn-start::after{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:conic-gradient(transparent,rgba(255,255,255,.15),transparent 30%);animation:spinGlow 3s linear infinite}
+@keyframes spinGlow{to{transform:rotate(360deg)}}
+.hub-header{text-align:center;margin-bottom:24px;padding-top:48px}
+.cat-card::after{content:'点击进入 →';position:absolute;bottom:12px;right:16px;font-size:.7rem;color:var(--accent);opacity:0;transition:opacity .3s}
+.cat-card:hover::after{opacity:.7}
+</style>
+</head>
+<body>
+<canvas id="bgCanvas"></canvas>
+<div class="flash-overlay" id="flashOverlay"></div>
+
+<!-- WELCOME SCREEN -->
+<div class="screen active" id="welcome" style="display:flex">
+  <div class="welcome-wrap">
+    <div class="welcome-icon">🧬</div>
+    <div class="hub-title" style="margin-bottom:4px">神经突触</div>
+    <div class="hub-subtitle" style="margin-bottom:28px">COGNITIVE CHALLENGE</div>
+    <div style="color:var(--text2);font-size:.9rem;line-height:1.8;text-align:center;max-width:420px;margin-bottom:36px">
+      四大维度全面测试你的认知能力<br>
+      反射弧 · 短时记忆 · 逻辑思维 · 反应速度<br>
+      共 20 关，由易到难，逐关解锁
+    </div>
+    <button class="btn btn-primary btn-start" onclick="showScreen('hub')">开始挑战 →</button>
+    <div style="margin-top:16px;color:var(--text2);font-size:.75rem;opacity:.5">点击上方按钮进入关卡选择</div>
+  </div>
+</div>
+
+<!-- HUB SCREEN -->
+<div class="screen" id="hub">
+  <div class="hub-header">
+    <div class="hub-title" style="font-size:clamp(1.2rem,3vw,1.8rem)">神经突触</div>
+    <div style="color:var(--text2);font-size:.8rem;letter-spacing:2px">选择测试类别 ▾</div>
+  </div>
+  <div class="categories" id="categoriesGrid"></div>
+</div>
+
+<!-- LEVEL SELECT -->
+<div class="screen" id="levelSelect">
+  <button class="ls-back" onclick="showScreen('hub')">← 返回</button>
+  <div class="ls-title" id="lsTitle"></div>
+  <div class="ls-desc" id="lsDesc"></div>
+  <div class="levels-grid" id="levelsGrid"></div>
+</div>
+
+<!-- GAME SCREEN -->
+<div class="screen" id="gameScreen">
+  <div class="game-hud">
+    <div class="game-hud-left">
+      <div><div class="hud-label">回合</div><div class="hud-value" id="hudRound">1/5</div></div>
+      <div><div class="hud-label">得分</div><div class="hud-value" id="hudScore">0</div></div>
+    </div>
+    <div class="game-hud-right">
+      <div><div class="hud-label" id="hudTimerLabel">时间</div><div class="hud-value" id="hudTimer">--</div></div>
+      <button class="game-quit" onclick="quitGame()">退出</button>
+    </div>
+  </div>
+  <div id="gameArea"></div>
+</div>
+
+<!-- RESULT SCREEN -->
+<div class="screen" id="resultScreen">
+  <div class="result-box">
+    <div class="result-status" id="resultStatus"></div>
+    <div class="result-stars" id="resultStars"></div>
+    <div class="result-detail" id="resultDetail"></div>
+    <div class="result-actions">
+      <button class="btn btn-secondary" onclick="goToLevelSelect()">返回关卡</button>
+      <button class="btn btn-primary" id="resultNextBtn" onclick="playNext()">下一关 →</button>
+      <button class="btn btn-secondary" id="resultRetryBtn" onclick="retryLevel()">重试</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   PLACEHOLDER SECTIONS — will be filled incrementally
+   ============================================================ */
+
+// === SECTION: Audio System ===
+const Audio = (() => {
+  let ctx;
+  function getCtx() { if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); return ctx; }
+  function play(freq, type, dur, vol=0.15) {
+    try {
+      const c = getCtx(), o = c.createOscillator(), g = c.createGain();
+      o.type = type; o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + dur);
+      o.connect(g); g.connect(c.destination);
+      o.start(); o.stop(c.currentTime + dur);
+    } catch(e) {}
+  }
+  return {
+    click: () => play(800, 'sine', 0.08, 0.1),
+    success: () => { play(523, 'sine', 0.15); setTimeout(() => play(659, 'sine', 0.15), 100); setTimeout(() => play(784, 'sine', 0.25), 200); },
+    error: () => play(200, 'square', 0.25, 0.12),
+    beep: () => play(600, 'sine', 0.1, 0.08),
+    tick: () => play(1000, 'sine', 0.05, 0.06),
+    go: () => play(880, 'triangle', 0.2, 0.15),
+    star: () => { play(1047, 'sine', 0.2, 0.1); setTimeout(() => play(1319, 'sine', 0.3, 0.1), 150); },
+  };
+})();
+
+// === SECTION: Background Animation ===
+;(() => {
+  const canvas = document.getElementById('bgCanvas');
+  const cx = canvas.getContext('2d');
+  let W, H, nodes = [], frame = 0;
+  function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; initNodes(); }
+  function initNodes() {
+    nodes = [];
+    const count = Math.floor((W * H) / 18000);
+    for (let i = 0; i < count; i++) nodes.push({ x: Math.random()*W, y: Math.random()*H, vx: (Math.random()-.5)*.3, vy: (Math.random()-.5)*.3, r: Math.random()*2+1 });
+  }
+  function draw() {
+    cx.clearRect(0, 0, W, H);
+    frame++;
+    nodes.forEach(n => {
+      n.x += n.vx; n.y += n.vy;
+      if (n.x < 0) n.x = W; if (n.x > W) n.x = 0;
+      if (n.y < 0) n.y = H; if (n.y > H) n.y = 0;
+      const pulse = 0.4 + 0.3 * Math.sin(frame * 0.02 + n.x * 0.01);
+      cx.beginPath(); cx.arc(n.x, n.y, n.r, 0, Math.PI*2);
+      cx.fillStyle = `rgba(0,240,255,${pulse * 0.35})`; cx.fill();
+    });
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i+1; j < nodes.length; j++) {
+        const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < 120) {
+          cx.beginPath(); cx.moveTo(nodes[i].x, nodes[i].y); cx.lineTo(nodes[j].x, nodes[j].y);
+          cx.strokeStyle = `rgba(0,240,255,${(1 - dist/120) * 0.1})`; cx.lineWidth = 0.5; cx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  window.addEventListener('resize', resize); resize(); draw();
+})();
+
+// === SECTION: Game State & Data ===
+const CATS = [
+  { id:0, name:'反射弧测试', icon:'⚡', desc:'测试刺激-反应协调能力', color:'#00f0ff',
+    levels:[
+      {name:'快速点击',rounds:5,desc:'点击出现的圆圈，越快越好'},
+      {name:'颜色筛选',rounds:8,desc:'只点击绿色圆圈'},
+      {name:'动态判断',rounds:10,desc:'圆圈变红时才点击'},
+      {name:'双重刺激',rounds:10,desc:'按从左到右的顺序点击'},
+      {name:'色键反应',rounds:12,desc:'按对应颜色的键盘键(R/G/B)'},
+    ]},
+  { id:1, name:'短时记忆测试', icon:'🧠', desc:'挑战你的工作记忆容量', color:'#7b2ff7',
+    levels:[
+      {name:'4位数字',rounds:3,desc:'记住4个数字并输入'},
+      {name:'6位数字',rounds:4,desc:'记住6个数字并输入'},
+      {name:'3×3网格',rounds:4,desc:'记住高亮的格子位置'},
+      {name:'4×4网格',rounds:4,desc:'记住更多高亮格子'},
+      {name:'逆序回忆',rounds:4,desc:'倒序输入8个数字'},
+    ]},
+  { id:2, name:'逻辑思维测试', icon:'🔮', desc:'考验推理与模式识别', color:'#ff2d75',
+    levels:[
+      {name:'数列补全',rounds:4,desc:'找出数列规律'},
+      {name:'图形匹配',rounds:4,desc:'找出规律并选择正确图形'},
+      {name:'三段论',rounds:4,desc:'根据前提推导结论'},
+      {name:'复杂数列',rounds:4,desc:'更复杂的数列规律'},
+      {name:'逻辑推理',rounds:4,desc:'多步逻辑推理题'},
+    ]},
+  { id:3, name:'反应速度测试', icon:'🎯', desc:'纯粹的速度测试', color:'#ffaa00',
+    levels:[
+      {name:'基础反应',rounds:5,desc:'屏幕变色后尽快点击',target:400},
+      {name:'极速反应',rounds:5,desc:'目标：平均300ms以内',target:300},
+      {name:'方向反应',rounds:8,desc:'按下对应方向键',target:500},
+      {name:'斯特鲁普',rounds:10,desc:'点击文字的颜色而非内容',target:600},
+      {name:'混合刺激',rounds:12,desc:'不同形状对应不同操作',target:450},
+    ]},
+];
+
+let progress = JSON.parse(localStorage.getItem('neuro_progress') || 'null') || {unlocked:[[0],[0],[0],[0]],stars:[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]]};
+function saveProgress() { localStorage.setItem('neuro_progress', JSON.stringify(progress)); }
+
+let currentCat = 0, currentLevel = 0;
+let gameState = { round:0, score:0, total:0, times:[], active:false, timerId:null, data:null };
+
+// === SECTION: Screen Navigation ===
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => {
+    s.classList.remove('active');
+    s.style.display = 'none';
+  });
+  const el = document.getElementById(id);
+  el.style.display = 'flex';
+  // Force reflow before adding active class for transition
+  void el.offsetWidth;
+  el.classList.add('active');
+  if (id === 'hub') renderHub();
+}
+function flash(type) {
+  const el = document.getElementById('flashOverlay');
+  el.className = 'flash-overlay ' + type + ' show';
+  setTimeout(() => el.className = 'flash-overlay', 200);
+}
+
+// === SECTION: Hub Rendering ===
+function renderHub() {
+  const grid = document.getElementById('categoriesGrid');
+  grid.innerHTML = '';
+  CATS.forEach((cat, ci) => {
+    const card = document.createElement('div');
+    card.className = 'cat-card';
+    card.style.setProperty('--cat-color', cat.color);
+    card.onclick = () => openCategory(ci);
+    let dots = '';
+    for (let i = 0; i < 5; i++) {
+      const cls = progress.stars[ci][i] > 0 ? 'completed' : (progress.unlocked[ci].includes(i) ? 'unlocked' : 'locked');
+      const starTxt = progress.stars[ci][i] > 0 ? '★'.repeat(progress.stars[ci][i]) : (i+1);
+      dots += `<div class="dot ${cls}">${starTxt}</div>`;
+    }
+    card.innerHTML = `<div class="cat-icon">${cat.icon}</div><div class="cat-name">${cat.name}</div><div class="cat-desc">${cat.desc}</div><div class="cat-progress">${dots}</div>`;
+    grid.appendChild(card);
+  });
+}
+
+// === SECTION: Level Select ===
+function openCategory(ci) {
+  currentCat = ci;
+  const cat = CATS[ci];
+  document.getElementById('lsTitle').textContent = cat.icon + ' ' + cat.name;
+  document.getElementById('lsTitle').style.color = cat.color;
+  document.getElementById('lsDesc').textContent = cat.desc;
+  const grid = document.getElementById('levelsGrid');
+  grid.innerHTML = '';
+  cat.levels.forEach((lv, li) => {
+    const btn = document.createElement('div');
+    const unlocked = progress.unlocked[ci].includes(li);
+    const stars = progress.stars[ci][li];
+    const cls = stars > 0 ? 'completed' : (unlocked ? 'unlocked' : 'locked');
+    btn.className = 'level-btn ' + cls;
+    let starsHtml = '';
+    for (let s = 1; s <= 3; s++) starsHtml += `<span class="star ${s <= stars ? 'earned' : ''}">★</span>`;
+    btn.innerHTML = `<div class="level-num">${li+1}</div><div style="font-size:.75rem;color:var(--text2)">${lv.name}</div><div class="level-stars">${starsHtml}</div>`;
+    if (unlocked) btn.onclick = () => startLevel(ci, li);
+    grid.appendChild(btn);
+  });
+  showScreen('levelSelect');
+  Audio.click();
+}
+function goToLevelSelect() { openCategory(currentCat); }
+function quitGame() { cleanupGame(); openCategory(currentCat); }
+function cleanupGame() {
+  gameState.active = false;
+  if (gameState.timerId) { clearInterval(gameState.timerId); gameState.timerId = null; }
+  if (gameState.timeoutId) { clearTimeout(gameState.timeoutId); gameState.timeoutId = null; }
+  document.removeEventListener('keydown', gameState.keyHandler);
+  gameState.keyHandler = null;
+}
+
+// === SECTION: Game Engine Core ===
+function startLevel(ci, li) {
+  currentCat = ci; currentLevel = li;
+  cleanupGame();
+  gameState = { round:0, score:0, total:CATS[ci].levels[li].rounds, times:[], active:true, timerId:null, timeoutId:null, keyHandler:null, data:null };
+  showScreen('gameScreen');
+  updateHUD();
+  Audio.go();
+  // countdown then start
+  countdown(3, () => { runRound(); });
+}
+function updateHUD() {
+  document.getElementById('hudRound').textContent = `${gameState.round+1}/${gameState.total}`;
+  document.getElementById('hudScore').textContent = gameState.score;
+  document.getElementById('hudTimer').textContent = '--';
+}
+function countdown(n, cb) {
+  const area = document.getElementById('gameArea');
+  if (n <= 0) { cb(); return; }
+  area.innerHTML = `<div class="countdown">${n}</div>`;
+  Audio.tick();
+  setTimeout(() => countdown(n-1, cb), 600);
+}
+function runRound() {
+  if (!gameState.active) return;
+  if (gameState.round >= gameState.total) { endGame(); return; }
+  updateHUD();
+  const runners = [
+    [startReflex1, startReflex2, startReflex3, startReflex4, startReflex5],
+    [startMemory1, startMemory2, startMemory3, startMemory4, startMemory5],
+    [startLogic1, startLogic2, startLogic3, startLogic4, startLogic5],
+    [startReaction1, startReaction2, startReaction3, startReaction4, startReaction5],
+  ];
+  runners[currentCat][currentLevel]();
+}
+function nextRound(correct) {
+  if (correct) { gameState.score++; flash('success'); Audio.success(); }
+  else { flash('error'); Audio.error(); }
+  gameState.round++;
+  setTimeout(() => { if (gameState.active) runRound(); }, 600);
+}
+function startTimer(seconds, onExpire) {
+  const el = document.getElementById('hudTimer');
+  let remaining = seconds;
+  el.textContent = remaining.toFixed(1);
+  gameState.timerId = setInterval(() => {
+    remaining -= 0.1;
+    if (remaining <= 0) { clearInterval(gameState.timerId); gameState.timerId=null; el.textContent='0.0'; if(onExpire)onExpire(); return; }
+    el.textContent = remaining.toFixed(1);
+  }, 100);
+  return () => { clearInterval(gameState.timerId); gameState.timerId=null; };
+}
+function randInt(a,b) { return Math.floor(Math.random()*(b-a+1))+a; }
+function shuffle(arr) { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=randInt(0,i);[a[i],a[j]]=[a[j],a[i]];} return a; }
+
+// === SECTION: Category 1 — Reflex Arc ===
+function startReflex1() {
+  const area = document.getElementById('gameArea');
+  area.innerHTML = '<div class="game-instruction">等待圆圈出现，然后尽快点击！</div>';
+  const delay = randInt(800, 2500);
+  gameState.timeoutId = setTimeout(() => {
+    const circle = document.createElement('div');
+    circle.className = 'stimulus-circle';
+    circle.style.cssText = `width:100px;height:100px;background:var(--accent);box-shadow:0 0 30px rgba(0,240,255,.5);position:relative;cursor:pointer;`;
+    const t0 = performance.now();
+    let clicked = false;
+    circle.onclick = () => {
+      if (clicked) return; clicked = true;
+      const dt = performance.now() - t0;
+      gameState.times.push(dt);
+      nextRound(dt < 1000);
+    };
+    area.innerHTML = '';
+    area.appendChild(circle);
+    gameState.timeoutId = setTimeout(() => { if (!clicked) { clicked=true; nextRound(false); } }, 1200);
+  }, delay);
+}
+
+function startReflex2() {
+  const area = document.getElementById('gameArea');
+  area.innerHTML = '<div class="game-instruction">只点击绿色圆圈！</div>';
+  gameState.timeoutId = setTimeout(() => {
+    area.innerHTML = '';
+    const colors = ['#ff3355','#3366ff','#ff3355','#ffaa00'];
+    const greenIdx = randInt(0, 4);
+    let clicked = false;
+    for (let i = 0; i < 5; i++) {
+      const c = document.createElement('div');
+      c.className = 'stimulus-circle';
+      const isGreen = i === greenIdx;
+      const col = isGreen ? '#00ff88' : colors[i % colors.length];
+      c.style.cssText = `width:70px;height:70px;background:${col};box-shadow:0 0 20px ${col}44;position:relative;margin:10px;cursor:pointer;display:inline-block;border-radius:50%;`;
+      const t0 = performance.now();
+      c.onclick = () => {
+        if (clicked) return; clicked = true;
+        if (isGreen) { gameState.times.push(performance.now()-t0); nextRound(true); }
+        else nextRound(false);
+      };
+      area.appendChild(c);
+    }
+    gameState.timeoutId = setTimeout(() => { if(!clicked){clicked=true;nextRound(false);} }, 1000);
+  }, randInt(500, 1500));
+}
+
+function startReflex3() {
+  const area = document.getElementById('gameArea');
+  const circle = document.createElement('div');
+  circle.className = 'stimulus-circle';
+  circle.style.cssText = 'width:120px;height:120px;background:#3366ff;box-shadow:0 0 30px rgba(51,102,255,.4);position:relative;cursor:pointer;transition:background .15s;border-radius:50%;';
+  area.innerHTML = '<div class="game-instruction">圆圈变红时点击！其他颜色不要点！</div>';
+  area.appendChild(circle);
+  let resolved = false;
+  const willTurnRed = Math.random() > 0.3;
+  const otherColors = ['#3366ff','#ffaa00','#7b2ff7','#00ff88'];
+  gameState.timeoutId = setTimeout(() => {
+    if (willTurnRed) {
+      circle.style.background = '#ff3355';
+      circle.style.boxShadow = '0 0 30px rgba(255,51,85,.5)';
+      const t0 = performance.now();
+      circle.onclick = () => { if(resolved)return; resolved=true; gameState.times.push(performance.now()-t0); nextRound(true); };
+      gameState.timeoutId = setTimeout(() => { if(!resolved){resolved=true;nextRound(false);} }, 800);
+    } else {
+      const col = otherColors[randInt(0,3)];
+      circle.style.background = col;
+      circle.onclick = () => { if(resolved)return; resolved=true; nextRound(false); };
+      gameState.timeoutId = setTimeout(() => { if(!resolved){resolved=true;nextRound(true);} }, 800);
+    }
+  }, randInt(800, 2000));
+}
+
+function startReflex4() {
+  const area = document.getElementById('gameArea');
+  area.innerHTML = '<div class="game-instruction">按从左到右的顺序点击两个圆圈！</div>';
+  gameState.timeoutId = setTimeout(() => {
+    area.innerHTML = '<div style="display:flex;gap:80px;align-items:center"></div>';
+    const wrap = area.firstChild;
+    let order = 0, t0 = performance.now(), resolved = false;
+    for (let i = 0; i < 2; i++) {
+      const c = document.createElement('div');
+      const col = i===0?'var(--accent)':'var(--accent2)';
+      c.style.cssText = `width:90px;height:90px;border-radius:50%;background:${col};cursor:pointer;box-shadow:0 0 25px ${col}44;transition:transform .1s;`;
+      c.onclick = () => {
+        if(resolved)return;
+        if(i === order) { order++; c.style.transform='scale(0.7)';c.style.opacity='0.4'; Audio.click();
+          if(order===2){resolved=true;gameState.times.push(performance.now()-t0);nextRound(true);}
+        } else { resolved=true; nextRound(false); }
+      };
+      wrap.appendChild(c);
+    }
+    gameState.timeoutId = setTimeout(()=>{if(!resolved){resolved=true;nextRound(false);}},900);
+  }, randInt(600,1500));
+}
+
+function startReflex5() {
+  const area = document.getElementById('gameArea');
+  const colorMap = {r:{name:'红',bg:'#ff3355'},g:{name:'绿',bg:'#00ff88'},b:{name:'蓝',bg:'#3366ff'}};
+  const keys = ['r','g','b'];
+  const chosen = keys[randInt(0,2)];
+  const info = colorMap[chosen];
+  area.innerHTML = `<div class="game-instruction">按下对应键：R=红 G=绿 B=蓝</div>`;
+  gameState.timeoutId = setTimeout(() => {
+    area.innerHTML = `<div style="width:120px;height:120px;border-radius:50%;background:${info.bg};box-shadow:0 0 40px ${info.bg}66;display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;color:#000">${info.name}</div>
+    <div class="game-instruction" style="margin-top:16px">按 ${chosen.toUpperCase()} 键</div>`;
+    const t0 = performance.now();
+    let resolved = false;
+    const handler = (e) => {
+      if(resolved)return;
+      if(['r','g','b'].includes(e.key.toLowerCase())) {
+        resolved=true; document.removeEventListener('keydown',handler);
+        nextRound(e.key.toLowerCase()===chosen);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    gameState.keyHandler = handler;
+    gameState.timeoutId = setTimeout(()=>{if(!resolved){resolved=true;document.removeEventListener('keydown',handler);nextRound(false);}},700);
+  }, randInt(500,1500));
+}
+
+// === SECTION: Category 2 — Short-term Memory ===
+function showNumbersThenRecall(count, showTime, reverse=false) {
+  const area = document.getElementById('gameArea');
+  const nums = Array.from({length:count}, ()=>randInt(0,9)).join('');
+  area.innerHTML = `<div class="game-instruction">记住这些数字${reverse?'（稍后倒序输入）':''}</div><div class="number-display">${nums}</div>`;
+  Audio.beep();
+  setTimeout(() => {
+    area.innerHTML = `<div class="game-instruction">${reverse?'请倒序输入数字':'请输入刚才的数字'}</div>
+      <input class="game-input" id="memInput" maxlength="${count}" autocomplete="off" inputmode="numeric">
+      <div class="game-instruction" style="margin-top:8px;font-size:.75rem">输入后按 Enter 确认</div>`;
+    const inp = document.getElementById('memInput');
+    inp.focus();
+    const target = reverse ? nums.split('').reverse().join('') : nums;
+    const handler = (e) => {
+      if(e.key==='Enter') {
+        inp.removeEventListener('keydown', handler);
+        nextRound(inp.value === target);
+      }
+    };
+    inp.addEventListener('keydown', handler);
+  }, showTime);
+}
+function startMemory1() { showNumbersThenRecall(4, 3000); }
+function startMemory2() { showNumbersThenRecall(6, 4000); }
+
+function showGridThenRecall(gridSize, highlightCount, showTime) {
+  const area = document.getElementById('gameArea');
+  const totalCells = gridSize * gridSize;
+  const indices = shuffle(Array.from({length:totalCells},(_,i)=>i)).slice(0, highlightCount);
+  const cellPx = gridSize===3?80:65;
+  let html = `<div class="game-instruction">记住高亮的格子</div><div class="memory-grid" style="grid-template-columns:repeat(${gridSize},${cellPx}px)">`;
+  for(let i=0;i<totalCells;i++) {
+    html += `<div class="memory-cell ${indices.includes(i)?'highlighted':''}" data-idx="${i}" style="width:${cellPx}px;height:${cellPx}px"></div>`;
+  }
+  html += '</div>';
+  area.innerHTML = html;
+  Audio.beep();
+  setTimeout(()=>{
+    area.querySelectorAll('.memory-cell').forEach(c=>c.classList.remove('highlighted'));
+    area.querySelector('.game-instruction').textContent = `点击刚才高亮的 ${highlightCount} 个格子`;
+    let selected = new Set();
+    area.querySelectorAll('.memory-cell').forEach(c=>{
+      c.onclick = ()=>{
+        const idx = parseInt(c.dataset.idx);
+        if(selected.has(idx)){selected.delete(idx);c.classList.remove('selected');}
+        else{selected.add(idx);c.classList.add('selected');Audio.click();}
+        if(selected.size === highlightCount) {
+          setTimeout(()=>{
+            const correct = indices.every(i=>selected.has(i));
+            area.querySelectorAll('.memory-cell').forEach(cell=>{
+              const ci=parseInt(cell.dataset.idx);
+              if(indices.includes(ci))cell.classList.add('correct');
+              if(selected.has(ci)&&!indices.includes(ci))cell.classList.add('wrong');
+            });
+            setTimeout(()=>nextRound(correct),500);
+          },200);
+        }
+      };
+    });
+  }, showTime);
+}
+function startMemory3() { showGridThenRecall(3, 4, 3000); }
+function startMemory4() { showGridThenRecall(4, 6, 4000); }
+function startMemory5() { showNumbersThenRecall(8, 3000, true); }
+
+// === SECTION: Category 3 — Logical Thinking ===
+const LOGIC_DATA = {
+  sequences: [
+    {q:'2, 4, 6, 8, ?',opts:['9','10','11','12'],ans:1},
+    {q:'3, 6, 12, 24, ?',opts:['36','48','30','42'],ans:1},
+    {q:'1, 1, 2, 3, 5, ?',opts:['7','8','6','9'],ans:1},
+    {q:'10, 7, 4, 1, ?',opts:['-3','-2','0','-1'],ans:1},
+    {q:'1, 4, 9, 16, ?',opts:['20','25','24','36'],ans:1},
+    {q:'2, 6, 18, 54, ?',opts:['108','162','72','216'],ans:0},
+  ],
+  patterns: [
+    {q:'◯ △ ◯ △ ◯ ?', opts:['◯','△','□','◇'], ans:1},
+    {q:'■ ■ □ ■ ■ □ ■ ■ ?', opts:['■','□','△','◯'], ans:1},
+    {q:'A Z B Y C ?', opts:['X','D','W','E'], ans:0},
+    {q:'◯ ◯ △ ◯ ◯ △ ◯ ◯ ?', opts:['◯','△','□','◇'], ans:1},
+    {q:'1 A 2 B 3 ?', opts:['C','4','D','3'], ans:0},
+  ],
+  syllogisms: [
+    {premise:'所有猫都是动物。小花是猫。', opts:['小花是动物','小花不是动物','小花是狗','无法判断'], ans:0},
+    {premise:'所有学生都要考试。小明是学生。', opts:['小明不用考试','小明要考试','小明是老师','无法判断'], ans:1},
+    {premise:'没有鱼能飞。鲸鱼不是鱼。', opts:['鲸鱼能飞','鲸鱼不能飞','鲸鱼是鱼','无法判断'], ans:3},
+    {premise:'所有金属都导电。铜是金属。', opts:['铜不导电','铜导电','铜是非金属','无法判断'], ans:1},
+    {premise:'有些花是红色的。玫瑰是花。', opts:['玫瑰是红色的','玫瑰不是红色的','玫瑰可能是红色的','玫瑰一定不是红色的'], ans:2},
+  ],
+  complex: [
+    {q:'2, 5, 11, 23, ?',opts:['35','47','46','45'],ans:1},
+    {q:'A1, B2, C4, D8, ?',opts:['E16','E10','F16','E12'],ans:0},
+    {q:'3, 5, 9, 17, ?',opts:['25','33','31','29'],ans:1},
+    {q:'1, 2, 4, 7, 11, ?',opts:['15','16','14','17'],ans:1},
+    {q:'Z1, Y2, X3, W4, ?',opts:['V5','U5','V4','X5'],ans:0},
+  ],
+  puzzles: [
+    {premise:'A比B高，C比A矮，B比D高。', q:'谁最矮？', opts:['A','B','C','D'], ans:3},
+    {premise:'甲跑得比乙快，丙跑得比甲慢，丁跑得比乙慢。', q:'谁跑得最慢？', opts:['甲','乙','丙','丁'], ans:3},
+    {premise:'红球在蓝球左边，绿球在蓝球右边，黄球在绿球右边。', q:'从左到右的顺序是？', opts:['红蓝绿黄','蓝红绿黄','红绿蓝黄','黄绿蓝红'], ans:0},
+    {premise:'小王比小李大3岁，小李比小张大2岁，小张10岁。', q:'小王几岁？', opts:['13','14','15','12'], ans:2},
+    {premise:'A说真话，B总说假话。B说："A说他是骗子。"', q:'B这句话是？', opts:['真话','假话','无法判断','半真半假'], ans:1},
+  ],
+};
+
+function runLogicRound(pool, timeLimit, questionBuilder) {
+  const area = document.getElementById('gameArea');
+  const item = pool[gameState.round % pool.length];
+  const stopTimer = startTimer(timeLimit, ()=>nextRound(false));
+  questionBuilder(area, item, (correct) => { stopTimer(); nextRound(correct); });
+}
+
+function logicQBuilder(area, item, cb) {
+  let resolved = false;
+  let html = `<div class="game-prompt" style="font-size:1.3rem;font-family:var(--font-display);letter-spacing:2px">${item.q}</div><div class="options-row">`;
+  item.opts.forEach((o,i) => { html += `<button class="option-btn" data-i="${i}">${o}</button>`; });
+  html += '</div><div class="timer-bar"><div class="timer-fill" id="timerFill" style="width:100%"></div></div>';
+  area.innerHTML = html;
+  area.querySelectorAll('.option-btn').forEach(b => {
+    b.onclick = () => {
+      if(resolved) return; resolved=true;
+      const ci = parseInt(b.dataset.i);
+      const correct = ci === item.ans;
+      b.classList.add(correct?'correct-choice':'wrong-choice');
+      if(!correct) area.querySelectorAll('.option-btn')[item.ans]?.classList.add('correct-choice');
+      setTimeout(()=>cb(correct), 400);
+    };
+  });
+}
+
+function syllogismBuilder(area, item, cb) {
+  let resolved = false;
+  let html = `<div class="game-prompt">${item.premise}</div><div class="options-row">`;
+  item.opts.forEach((o,i) => { html += `<button class="option-btn" data-i="${i}">${o}</button>`; });
+  html += '</div>';
+  area.innerHTML = html;
+  area.querySelectorAll('.option-btn').forEach(b => {
+    b.onclick = () => {
+      if(resolved) return; resolved=true;
+      const ci = parseInt(b.dataset.i);
+      const correct = ci === item.ans;
+      b.classList.add(correct?'correct-choice':'wrong-choice');
+      if(!correct) area.querySelectorAll('.option-btn')[item.ans]?.classList.add('correct-choice');
+      setTimeout(()=>cb(correct), 400);
+    };
+  });
+}
+
+function puzzleBuilder(area, item, cb) {
+  let resolved = false;
+  let html = `<div class="game-prompt">${item.premise}</div><div class="game-prompt" style="color:var(--accent);margin-top:12px;font-weight:700">${item.q}</div><div class="options-row">`;
+  item.opts.forEach((o,i) => { html += `<button class="option-btn" data-i="${i}">${o}</button>`; });
+  html += '</div>';
+  area.innerHTML = html;
+  area.querySelectorAll('.option-btn').forEach(b => {
+    b.onclick = () => {
+      if(resolved) return; resolved=true;
+      const ci = parseInt(b.dataset.i);
+      const correct = ci === item.ans;
+      b.classList.add(correct?'correct-choice':'wrong-choice');
+      if(!correct) area.querySelectorAll('.option-btn')[item.ans]?.classList.add('correct-choice');
+      setTimeout(()=>cb(correct), 400);
+    };
+  });
+}
+
+function initLogicPool(key) {
+  if (!gameState.data || !gameState.data._logicPool) {
+    if (!gameState.data) gameState.data = {};
+    gameState.data._logicPool = shuffle(LOGIC_DATA[key]);
+  }
+  return gameState.data._logicPool;
+}
+function startLogic1() { runLogicRound(initLogicPool('sequences'), 15, logicQBuilder); }
+function startLogic2() { runLogicRound(initLogicPool('patterns'), 20, logicQBuilder); }
+function startLogic3() { runLogicRound(initLogicPool('syllogisms'), 25, syllogismBuilder); }
+function startLogic4() { runLogicRound(initLogicPool('complex'), 20, logicQBuilder); }
+function startLogic5() { runLogicRound(initLogicPool('puzzles'), 30, puzzleBuilder); }
+
+// === SECTION: Category 4 — Reaction Speed ===
+function startReaction1() { reactionBasic(400); }
+function startReaction2() { reactionBasic(300); }
+
+function reactionBasic(target) {
+  const area = document.getElementById('gameArea');
+  area.innerHTML = `<div class="reaction-zone waiting" id="rZone"><span style="font-size:1rem;color:var(--text2)">等待变色...</span></div>
+    <div class="game-instruction" style="margin-top:12px">变绿后立即点击！</div>`;
+  const zone = document.getElementById('rZone');
+  let state = 'waiting', t0;
+  const delay = randInt(1500, 4000);
+  gameState.timeoutId = setTimeout(() => {
+    if(!gameState.active) return;
+    state = 'ready'; t0 = performance.now();
+    zone.className = 'reaction-zone ready';
+    zone.innerHTML = '<span style="font-size:1.5rem;font-weight:700;color:#000">点击！</span>';
+  }, delay);
+  zone.onclick = () => {
+    if(state === 'waiting') {
+      state = 'done'; clearTimeout(gameState.timeoutId);
+      zone.className = 'reaction-zone too-early';
+      zone.innerHTML = '<span style="font-size:1rem;color:#fff">太早了！</span>';
+      setTimeout(()=>nextRound(false), 500);
+    } else if(state === 'ready') {
+      state = 'done';
+      const dt = performance.now() - t0;
+      gameState.times.push(dt);
+      zone.innerHTML = `<span style="font-size:1.5rem;font-weight:700;color:#000">${Math.round(dt)}ms</span>`;
+      setTimeout(()=>nextRound(true), 500);
+    }
+  };
+}
+
+function startReaction3() {
+  const area = document.getElementById('gameArea');
+  area.innerHTML = '<div class="game-instruction">等待箭头出现，按对应方向键</div>';
+  const arrows = [{k:'ArrowUp',s:'↑'},{k:'ArrowDown',s:'↓'},{k:'ArrowLeft',s:'←'},{k:'ArrowRight',s:'→'}];
+  const chosen = arrows[randInt(0,3)];
+  gameState.timeoutId = setTimeout(() => {
+    area.innerHTML = `<div class="arrow-display">${chosen.s}</div>`;
+    const t0 = performance.now();
+    let resolved = false;
+    const handler = (e) => {
+      if(resolved) return;
+      if(e.key.startsWith('Arrow')) {
+        e.preventDefault(); resolved = true;
+        document.removeEventListener('keydown', handler);
+        const dt = performance.now()-t0;
+        gameState.times.push(dt);
+        nextRound(e.key === chosen.k);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    gameState.keyHandler = handler;
+    gameState.timeoutId = setTimeout(()=>{if(!resolved){resolved=true;document.removeEventListener('keydown',handler);nextRound(false);}},2000);
+  }, randInt(1000, 3000));
+}
+
+function startReaction4() {
+  const area = document.getElementById('gameArea');
+  const stroopData = [
+    {word:'红色',colors:['#ff3355','#3366ff','#00ff88','#ffaa00']},
+    {word:'蓝色',colors:['#3366ff','#ff3355','#00ff88','#ffaa00']},
+    {word:'绿色',colors:['#00ff88','#ff3355','#3366ff','#ffaa00']},
+    {word:'黄色',colors:['#ffaa00','#ff3355','#3366ff','#00ff88']},
+  ];
+  const item = stroopData[randInt(0, stroopData.length-1)];
+  const correctColorIdx = 0;
+  // display word in a DIFFERENT color
+  const displayColorIdx = randInt(1, item.colors.length-1);
+  const displayColor = item.colors[displayColorIdx];
+  const correctColor = item.colors[correctColorIdx];
+
+  area.innerHTML = `<div class="game-instruction">点击文字显示的颜色（不是文字含义）</div>
+    <div class="stroop-word" style="color:${displayColor};margin:30px 0">${item.word}</div>
+    <div class="options-row" id="stroopOpts"></div>`;
+  const optsEl = document.getElementById('stroopOpts');
+  const colorNames = ['红','蓝','绿','黄'];
+  const allColors = ['#ff3355','#3366ff','#00ff88','#ffaa00'];
+  let resolved = false;
+  const t0 = performance.now();
+  // The correct answer is displayColor
+  const shuffledIndices = shuffle([0,1,2,3]);
+  shuffledIndices.forEach(ci => {
+    const btn = document.createElement('button');
+    btn.className = 'option-btn';
+    btn.style.cssText = `background:${allColors[ci]};color:#000;font-weight:700;min-width:80px;border-color:${allColors[ci]}`;
+    btn.textContent = colorNames[ci];
+    btn.onclick = () => {
+      if(resolved) return; resolved=true;
+      const dt = performance.now()-t0;
+      gameState.times.push(dt);
+      const correct = allColors[ci] === displayColor;
+      btn.classList.add(correct?'correct-choice':'wrong-choice');
+      setTimeout(()=>nextRound(correct),300);
+    };
+    optsEl.appendChild(btn);
+  });
+  gameState.timeoutId = setTimeout(()=>{if(!resolved){resolved=true;nextRound(false);}},3000);
+}
+
+function startReaction5() {
+  const area = document.getElementById('gameArea');
+  const shapes = [
+    {name:'circle', label:'圆形=点击', svg:'<svg width="100" height="100"><circle cx="50" cy="50" r="45" fill="var(--accent)" /></svg>', action:'click'},
+    {name:'square', label:'方形=空格键', svg:'<svg width="100" height="100"><rect x="5" y="5" width="90" height="90" fill="#7b2ff7" /></svg>', action:'space'},
+    {name:'triangle', label:'三角=回车键', svg:'<svg width="100" height="100"><polygon points="50,5 95,95 5,95" fill="#ff2d75" /></svg>', action:'enter'},
+  ];
+  const chosen = shapes[randInt(0,2)];
+  area.innerHTML = `<div class="game-instruction">圆形=点击 | 方形=空格 | 三角=回车</div>`;
+  gameState.timeoutId = setTimeout(() => {
+    area.innerHTML = `<div class="game-instruction" style="margin-bottom:20px">圆形=点击 | 方形=空格 | 三角=回车</div>
+      <div class="shape-display" id="shapeTarget" style="cursor:pointer">${chosen.svg}</div>`;
+    const t0 = performance.now();
+    let resolved = false;
+    const target = document.getElementById('shapeTarget');
+    const check = (actionType) => {
+      if(resolved) return; resolved=true;
+      document.removeEventListener('keydown',handler);
+      const dt = performance.now()-t0;
+      gameState.times.push(dt);
+      nextRound(actionType === chosen.action);
+    };
+    target.onclick = () => check('click');
+    const handler = (e) => {
+      if(e.key === ' ') { e.preventDefault(); check('space'); }
+      if(e.key === 'Enter') { e.preventDefault(); check('enter'); }
+    };
+    document.addEventListener('keydown', handler);
+    gameState.keyHandler = handler;
+    gameState.timeoutId = setTimeout(()=>{if(!resolved){resolved=true;document.removeEventListener('keydown',handler);nextRound(false);}},2000);
+  }, randInt(1000, 3000));
+}
+
+// === SECTION: Results ===
+function endGame() {
+  cleanupGame();
+  const cat = CATS[currentCat];
+  const lv = cat.levels[currentLevel];
+  const total = lv.rounds;
+  const score = gameState.score;
+  const pct = score / total;
+  let passed = false, stars = 0;
+
+  // For reaction speed levels, also check avg time
+  if (currentCat === 3 && gameState.times.length > 0) {
+    const avg = gameState.times.reduce((a,b)=>a+b,0) / gameState.times.length;
+    const target = lv.target || 500;
+    passed = pct >= 0.6 && avg <= target * 1.3;
+    stars = (avg <= target * 0.7 && pct >= 0.9) ? 3 : (avg <= target && pct >= 0.7) ? 2 : passed ? 1 : 0;
+  } else {
+    passed = pct >= 0.6;
+    stars = pct >= 0.95 ? 3 : pct >= 0.75 ? 2 : passed ? 1 : 0;
+  }
+
+  // Update progress
+  if (stars > progress.stars[currentCat][currentLevel]) {
+    progress.stars[currentCat][currentLevel] = stars;
+  }
+  if (passed && currentLevel < 4) {
+    if (!progress.unlocked[currentCat].includes(currentLevel + 1)) {
+      progress.unlocked[currentCat].push(currentLevel + 1);
+    }
+  }
+  saveProgress();
+
+  // Render result
+  const statusEl = document.getElementById('resultStatus');
+  statusEl.textContent = passed ? '通关成功！' : '挑战失败';
+  statusEl.className = 'result-status ' + (passed ? 'pass' : 'fail');
+
+  let starsHtml = '';
+  for (let i = 1; i <= 3; i++) starsHtml += `<span class="star ${i <= stars ? 'earned' : ''}">★</span>`;
+  document.getElementById('resultStars').innerHTML = starsHtml;
+
+  let detail = `正确率：${score}/${total} (${Math.round(pct*100)}%)`;
+  if (gameState.times.length > 0) {
+    const avg = gameState.times.reduce((a,b)=>a+b,0) / gameState.times.length;
+    detail += `<br>平均反应时间：${Math.round(avg)}ms`;
+    if (currentCat === 3) detail += ` (目标：${lv.target}ms)`;
+  }
+  document.getElementById('resultDetail').innerHTML = detail;
+
+  const nextBtn = document.getElementById('resultNextBtn');
+  nextBtn.style.display = (passed && currentLevel < 4) ? '' : 'none';
+
+  showScreen('resultScreen');
+  if (stars > 0) { setTimeout(()=>Audio.star(), 300); }
+}
+
+function playNext() {
+  if (currentLevel < 4) startLevel(currentCat, currentLevel + 1);
+}
+function retryLevel() { startLevel(currentCat, currentLevel); }
+
+// === SECTION: Init ===
+renderHub();
+
+</script>
+</body>
+</html>
